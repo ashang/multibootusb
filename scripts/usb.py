@@ -13,6 +13,7 @@ import shutil
 import collections
 import ctypes
 import subprocess
+from . import config
 from . import gen
 if platform.system() == 'Linux':
     from . import udisks
@@ -20,7 +21,7 @@ if platform.system() == 'Linux':
 if platform.system() == 'Windows':
     import psutil
     import win32com.client
-    import wmi
+#     import wmi
     import pythoncom
 
 
@@ -84,7 +85,7 @@ def disk_usage(mount_path):
         raise NotImplementedError("Platform not supported.")
 
 
-def list_devices(partition=1, fixed=False):
+def list_devices(fixed=False):
     """
     List inserted USB devices.
     :return: USB devices as list.
@@ -97,20 +98,19 @@ def list_devices(partition=1, fixed=False):
             try:
                 import pyudev
             except Exception as e:
-                gen.log('Pydev is not installed on host system. Using the inbuilt one.')
+                gen.log('PyUdev is not installed on host system, using built-in.')
                 from . import pyudev
             context = pyudev.Context()
 
-            for device in context.list_devices(subsystem='block', ID_BUS="usb"):
-                devices.append(str(device['DEVNAME']))
-                gen.log("\t" + device['DEVNAME'])
-
-            if fixed is True:
-                for device in context.list_devices(subsystem='block'):
+            for device in context.list_devices(subsystem='block'):
+                if fixed is True:
                     if device.get('DEVTYPE') in ['disk', 'partition'] and device.get('ID_PART_TABLE_TYPE'):
-                        if device['DEVNAME'] not in devices:
-                            devices.append(str(device['DEVNAME']))
-                            gen.log("\t" + device['DEVNAME'])
+                        devices.append(str(device.get('DEVNAME')))
+                        gen.log("\t" + device.get('DEVNAME'))
+                else:
+                    if device.get('ID_BUS') in ['usb'] and device.get('ID_PART_TABLE_TYPE'):
+                        devices.append(str(device.get('DEVNAME')))
+                        gen.log("\t" + device.get('DEVNAME'))
 
         except Exception as e:
             gen.log(e)
@@ -209,12 +209,9 @@ def details_udev(usb_disk_part):
         import pyudev
     except:
         from . import pyudev
-    """
-    Try with PyUdev to get the details of USB disks.
-    This is the easiest and reliable method to find USB details.
-    Also, it is a standalone package and no dependencies are required.
-    """
-    # gen.log "Using PyUdev for detecting USB details..."
+#   Try with PyUdev to get the details of USB disks.
+#   This is the easiest and reliable method to find USB details.
+#   Also, it is a standalone package and no dependencies are required.
     context = pyudev.Context()
     try:
         device = pyudev.Device.from_device_file(context, usb_disk_part)
@@ -222,7 +219,11 @@ def details_udev(usb_disk_part):
         gen.log("ERROR: Unknown disk/partition (%s)" % str(usb_disk_part))
         return None
 
-    fdisk_cmd_out = subprocess.check_output('fdisk -l ' + usb_disk_part, shell=True)
+    try:
+        fdisk_cmd_out = subprocess.check_output('fdisk -l ' + usb_disk_part, shell=True)
+    except subprocess.CalledProcessError:
+        gen.log("ERROR: fdisk failed on disk/partition (%s)" % str(usb_disk_part))
+        return None
 
     if b'Extended' in fdisk_cmd_out:
         mount_point = ''
@@ -258,7 +259,8 @@ def details_udev(usb_disk_part):
         size_free = shutil.disk_usage(mount_point)[2]
 
     else:
-        size_total = device.get('UDISKS_PARTITION_SIZE') or ""
+        fdisk_cmd = 'fdisk -l ' + usb_disk_part + ' | grep "^Disk /" | sed -re "s/.*\s([0-9]+)\sbytes.*/\\1/"'
+        size_total = subprocess.check_output(fdisk_cmd, shell=True).strip()
         size_used = ""
         size_free = ""
         mount_point = ""
@@ -275,12 +277,26 @@ def details_udisks2(usb_disk_part):
     """
     import dbus
     bus = dbus.SystemBus()
+
+    mount_point = ''
+    uuid = ''
+    file_system = ''
+    vendor = ''
+    model = ''
+    label = ''
+    devtype = "disk"
+
     bd = bus.get_object('org.freedesktop.UDisks2', '/org/freedesktop/UDisks2/block_devices%s'%usb_disk_part[4:])
     device = bd.Get('org.freedesktop.UDisks2.Block', 'Device', dbus_interface='org.freedesktop.DBus.Properties')
     device = bytearray(device).replace(b'\x00', b'').decode('utf-8')
-    uuid = bd.Get('org.freedesktop.UDisks2.Block', 'IdUUID', dbus_interface='org.freedesktop.DBus.Properties')
-    file_system =  bd.Get('org.freedesktop.UDisks2.Block', 'IdType', dbus_interface='org.freedesktop.DBus.Properties')
-    mount_point = bd.Get('org.freedesktop.UDisks2.Filesystem', 'MountPoints', dbus_interface='org.freedesktop.DBus.Properties')
+    if device[-1].isdigit() is True:
+        uuid = bd.Get('org.freedesktop.UDisks2.Block', 'IdUUID', dbus_interface='org.freedesktop.DBus.Properties')
+        file_system = bd.Get('org.freedesktop.UDisks2.Block', 'IdType', dbus_interface='org.freedesktop.DBus.Properties')
+        mount_point = bd.Get('org.freedesktop.UDisks2.Filesystem', 'MountPoints', dbus_interface='org.freedesktop.DBus.Properties')
+        devtype = 'partition'
+    else:
+        devtype = 'disk'
+        file_system = 'No_File_System'
     if mount_point:
         # mount_point = str(bytearray(mount_point[0]).decode('utf-8').replace(b'\x00', b''))
         mount_point = bytearray(mount_point[0]).replace(b'\x00', b'').decode('utf-8')
@@ -314,7 +330,7 @@ def details_udisks2(usb_disk_part):
 
     return {'uuid': uuid, 'file_system': file_system, 'label': label, 'mount_point': mount_point,
             'size_total': size_total, 'size_used': size_used, 'size_free': size_free,
-            'vendor': vendor, 'model': model}
+            'vendor': vendor, 'model': model, 'devtype': devtype}
 
 
 def bytes2human(n):
@@ -338,6 +354,48 @@ def bytes2human(n):
     return "%sB" % n
 
 
+def gpt_device(dev_name):
+    """
+    Find if the device inserted is GPT or not. We will just change the variable parameter in config file for later use
+    :param dev_name:
+    :return: True if GPT else False
+    """
+    if platform.system() == 'Windows':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        diskpart_cmd = 'wmic partition get name, type'
+        # We have to check using byte code else it crashes when system language is other than English
+        dev_no = get_physical_disk_number(dev_name).encode()
+        cmd_out = subprocess.check_output(diskpart_cmd, subprocess.SW_HIDE, startupinfo=startupinfo)
+        gen.log(cmd_out)
+        cmd_spt = cmd_out.split(b'\r')
+        for line in cmd_spt:
+            # line = line('utf-8')
+            if b'#' + dev_no + b',' in line:
+                if b'GPT' not in line:
+                    config.usb_gpt = False
+                    gen.log('Device ' + dev_name + ' is a MBR disk...')
+                    return False
+                else:
+                    config.usb_gpt = True
+                    gen.log('Device ' + dev_name + ' is a GPT disk...')
+                    return True
+                    
+    if platform.system() == "Linux":
+        if gen.has_digit(dev_name):
+            _cmd_out = subprocess.check_output("parted  " + dev_name[:-1] + " print", shell=True)
+        else:
+            _cmd_out = subprocess.check_output("parted  " + dev_name + " print", shell=True)
+        if b'msdos' in _cmd_out:
+            config.usb_gpt = False
+            gen.log('Device ' + dev_name + ' is a MBR disk...')
+            return False
+        elif b'gpt' in _cmd_out:
+            config.usb_gpt = True
+            gen.log('Device ' + dev_name + ' is a GPT disk...')
+            return True
+
+
 def win_disk_details(disk_drive):
     """
     Populate and get details of an USB disk under windows. Minimum required windows version is Vista.
@@ -352,9 +410,9 @@ def win_disk_details(disk_drive):
     oFS = win32com.client.Dispatch("Scripting.FileSystemObject")
     d = oFS.GetDrive(oFS.GetDriveName(oFS.GetAbsolutePathName(selected_usb_part)))
     selected_usb_device = d.DriveLetter
-    if d.DriveType is 1:
+    if d.DriveType == 1:
         devtype = "Removable Disk"
-    elif d.DriveType is 2:
+    elif d.DriveType == 2:
         devtype = "Fixed Disk"
     label = (d.VolumeName).strip()
     if not label.strip():
@@ -366,18 +424,17 @@ def win_disk_details(disk_drive):
     size_total = shutil.disk_usage(mount_point)[0]
     size_used = shutil.disk_usage(mount_point)[1]
     size_free = shutil.disk_usage(mount_point)[2]
-    '''
+
     # The below code works only from vista and above. I have removed it as many people reported that the software
     # was not working under windows xp. Even then, it is significantly slow if 'All Drives' option is checked.
     # Removing the code doesn't affect the functionality as it is only used to find vendor id and model of the drive.
-    c = wmi.WMI()
-    for physical_disk in c.Win32_DiskDrive(InterfaceType="USB"):
-        for partition in physical_disk.associators("Win32_DiskDriveToDiskPartition"):
-            for logical_disk in partition.associators("Win32_LogicalDiskToPartition"):
-                if logical_disk.Caption == disk_drive:
-                    vendor = (physical_disk.PNPDeviceID.split('&VEN_'))[1].split('&PROD_')[0]
-                    model = (physical_disk.PNPDeviceID.split('&PROD_'))[1].split('&REV_')[0]
-    '''
+#     c = wmi.WMI()
+#     for physical_disk in c.Win32_DiskDrive(InterfaceType="USB"):
+#         for partition in physical_disk.associators("Win32_DiskDriveToDiskPartition"):
+#             for logical_disk in partition.associators("Win32_LogicalDiskToPartition"):
+#                 if logical_disk.Caption == disk_drive:
+#                     vendor = (physical_disk.PNPDeviceID.split('&VEN_'))[1].split('&PROD_')[0]
+#                     model = (physical_disk.PNPDeviceID.split('&PROD_'))[1].split('&REV_')[0]
 
     return {'uuid': uuid, 'file_system': file_system, 'label': label, 'mount_point': mount_point,
             'size_total': size_total, 'size_used': size_used, 'size_free': size_free,
@@ -411,7 +468,25 @@ def details(usb_disk_part):
             details = details_udisks2(usb_disk_part)
     elif platform.system() == 'Windows':
         details = win_disk_details(usb_disk_part)
+
     return details
+
+
+def get_physical_disk_number(usb_disk):
+    """
+    Get the physical disk number as detected ny Windows.
+    :param usb_disk: USB disk (Like F:)
+    :return: Disk number.
+    """
+    import wmi
+    c = wmi.WMI()
+    for physical_disk in c.Win32_DiskDrive():
+        for partition in physical_disk.associators("Win32_DiskDriveToDiskPartition"):
+            for logical_disk in partition.associators("Win32_LogicalDiskToPartition"):
+                if logical_disk.Caption == usb_disk:
+                    # gen.log("Physical Device Number is " + partition.Caption[6:-14])
+                    return str(partition.Caption[6:-14])
+
 
 if __name__ == '__main__':
     usb_devices = list_devices()

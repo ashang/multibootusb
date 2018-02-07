@@ -11,6 +11,8 @@ from . import config
 from . import iso
 from . import _7zip
 from . import gen
+from .usb import bytes2human
+from . import menus
 
 
 def mbusb_update_grub_cfg():
@@ -20,6 +22,11 @@ def mbusb_update_grub_cfg():
     """
     # Lets convert syslinux config file to grub2 accepted file format.
     _iso_dir = os.path.join(config.usb_mount, 'multibootusb', iso.iso_basename(config.image_path))
+
+    # First write custom loopback.cfg file so as to be detected by iso2grub2 function later.
+    write_custom_gurb_cfg()
+
+    # Try to generate loopback entry file from syslinux config files
     try:
         gen.log('Trying to create loopback.cfg')
         iso2_grub2_cfg = iso2grub2(_iso_dir)
@@ -31,10 +38,10 @@ def mbusb_update_grub_cfg():
 
     grub_cfg_path = None
     syslinux_menu = None
-    sys_cfg_path = None
+#     sys_cfg_path = None
     loopback_cfg_path = None
     mbus_grub_cfg_path = os.path.join(config.usb_mount, 'multibootusb', 'grub', 'grub.cfg')
-    iso_grub_cfg = iso.iso_file_path(config.image_path, 'grub.cfg')
+#     iso_grub_cfg = iso.iso_file_path(config.image_path, 'grub.cfg')
     if iso.isolinux_bin_dir(config.image_path) is not False:
         iso_sys_cfg_path = os.path.join(iso.isolinux_bin_dir(config.image_path), 'syslinux.cfg')
         iso_iso_cfg_path = os.path.join(iso.isolinux_bin_dir(config.image_path), 'isolinux.cfg')
@@ -47,9 +54,8 @@ def mbusb_update_grub_cfg():
             syslinux_menu = iso_iso_cfg_path.replace('\\', '/')
 
     efi_grub_cfg = get_grub_cfg(config.image_path)
-    loopback_cfg_path = iso.iso_file_path(config.image_path, 'loopback.cfg')
     boot_grub_cfg = get_grub_cfg(config.image_path, efi=False)
-
+    loopback_cfg_path = iso.iso_file_path(config.image_path, 'loopback.cfg')
 
     if loopback_cfg_path is not False:
         grub_cfg_path = loopback_cfg_path.replace('\\', '/')
@@ -68,8 +74,12 @@ def mbusb_update_grub_cfg():
             with open(mbus_grub_cfg_path, 'a') as f:
                 f.write("#start " + iso.iso_basename(config.image_path) + "\n")
                 if grub_cfg_path is not None:
-                    f.write('     menuentry ' + iso.iso_basename(config.image_path) + ' {configfile '
-                            + '/multibootusb/' + iso.iso_basename(config.image_path) + '/' + grub_cfg_path + '}' + "\n")
+                    if  config.distro == 'grub2only':
+                        f.write('     menuentry ' + iso.iso_basename(config.image_path) + ' {configfile '
+                                + '/' + grub_cfg_path.replace('\\', '/') + '}' + "\n")
+                    else:
+                        f.write('     menuentry ' + iso.iso_basename(config.image_path) + ' {configfile '
+                                + '/multibootusb/' + iso.iso_basename(config.image_path) + '/' + grub_cfg_path + '}' + "\n")
                 elif config.distro == 'f4ubcd':
                     f.write('     menuentry ' + iso.iso_basename(config.image_path) +
                             ' {linux /multibootusb/grub.exe --config-file=/multibootusb' +
@@ -80,6 +90,10 @@ def mbusb_update_grub_cfg():
                 elif config.distro == 'ReactOS':
                     f.write('     menuentry ' + iso.iso_basename(config.image_path) +
                             ' {multiboot /loader/setupldr.sys}' + "\n")
+                elif config.distro == 'memdisk_img':
+                    f.write(menus.memdisk_img_cfg(syslinux=False, grub=True))
+                elif config.distro == 'memdisk_iso':
+                    f.write(menus.memdisk_iso_cfg(syslinux=False, grub=True))
                 elif config.distro == 'memtest':
                     f.write('     menuentry ' + iso.iso_basename(config.image_path) +
                             ' {linux16 ' + '/multibootusb/' + iso.iso_basename(config.image_path) + '/BISOLINUX/MEMTEST}' + "\n")
@@ -93,6 +107,23 @@ def mbusb_update_grub_cfg():
         gen.log('Updated entry in grub.cfg...')
     else:
         gen.log('Unable to update entry in grub.cfg...')
+
+
+def write_custom_gurb_cfg():
+    """
+    Create custom grub loopback.cfg file for known distros. Custom menu entries are stored on munus.py module
+    :return: 
+    """
+    loopback_cfg_path = os.path.join(config.usb_mount, 'multibootusb', iso.iso_basename(config.image_path), 'loopback.cfg')
+    menu = False
+    if config.distro == 'pc-tool':
+        menu = menus.pc_tool_config(syslinux=False, grub=True)
+    elif config.distro == 'rising-av':
+        menu = menus.rising(syslinux=False, grub=True)
+
+    if menu is not False:
+        gen.log('Writing custom loopback.cfg file...')
+        write_to_file(loopback_cfg_path, menu)
 
 
 def get_grub_cfg(iso_link, efi=True):
@@ -125,25 +156,21 @@ def get_grub_cfg(iso_link, efi=True):
 
 
 def grub_custom_menu(mbus_grub_cfg_path, distro):
-    iso_size_mb = iso.iso_size(config.image_path) / (1024.0 * 1024.0)
+    iso_size_mb = bytes2human(iso.iso_size(config.image_path))
     gen.log('size of the ISO is ' + str(iso_size_mb))
-    if distro == 'sgrubd2' or distro == 'raw_iso':
+    if distro in ['sgrubd2', 'raw_iso']:
         grub_raw_iso(mbus_grub_cfg_path)
-    elif distro == '':
 
-        '''
-        with open(mbus_grub_cfg_path, 'a') as f:
-            f.write("#start " + iso.iso_basename(config.image_path) + "\n")
-            f.write(grub_raw_iso())
-            f.write("#end " + iso.iso_basename(config.image_path) + "\n")
-        
-    
-    elif iso_size_mb < 750.0:
-        grub_raw_iso(mbus_grub_cfg_path)
-        '''
+#         with open(mbus_grub_cfg_path, 'a') as f:
+#             f.write("#start " + iso.iso_basename(config.image_path) + "\n")
+#             f.write(grub_raw_iso())
+#             f.write("#end " + iso.iso_basename(config.image_path) + "\n")
+#
+#
+#     elif iso_size_mb < 750.0:
+#         grub_raw_iso(mbus_grub_cfg_path)
 
     else:
-
         return False
 
 
@@ -191,10 +218,10 @@ def extract_kernel_line(search_text, match_line, isolinux_dir):
     """
     Function to check if kernel/linux line present in isolinux.cfg file is valid.
     If valid, then convert them in to grub accepted format
-    :param search_text: Type of text is to be searched. Typically kernel or linux 
+    :param search_text: Type of text is to be searched. Typically kernel or linux
     :param match_line: Line containing kernel ot linux from isolinux supported .cfg files
     :param isolinux_dir: Path to isolinux directory of an ISO
-    :return: Valid grub2 accepted kernel/linux line after conversion. If nothing found return ''. 
+    :return: Valid grub2 accepted kernel/linux line after conversion. If nothing found return ''.
     """
     kernel_line = ''
 
@@ -234,8 +261,8 @@ def extract_kernel_line(search_text, match_line, isolinux_dir):
 def iso2grub2(iso_dir):
     """
     Function to convert syslinux configuration to grub2 accepted configuration format. Features implemented are similar
-    to that of grub2  'loopback.cfg'. This 'loopback.cfg' file can be later on caled directly from grub2. The main 
-    advantage of this function is to generate the 'loopback.cfg' file automatically without manual involvement. 
+    to that of grub2  'loopback.cfg'. This 'loopback.cfg' file can be later on caled directly from grub2. The main
+    advantage of this function is to generate the 'loopback.cfg' file automatically without manual involvement.
     :param iso_dir: Path to distro install directory for looping through '.cfg' files.
     :param file_out: Path to 'loopback.cfg' file. By default it is set to root of distro install directory.
     :return:
@@ -261,11 +288,11 @@ def iso2grub2(iso_dir):
                             if ext_text:
                                 for m in ext_text:
                                     menuentry = ''
-                                    kernel = ''
+#                                     kernel = ''
                                     kernel_line = ''
                                     boot_options = ''
                                     initrd_line = ''
-                                    initrd = ''
+#                                     initrd = ''
 
                                     # Extract line containing 'menu label' and convert to menu entry of grub2
                                     if 'menu label' in m.group().lower():
@@ -292,7 +319,7 @@ def iso2grub2(iso_dir):
                                             for _lines in kernel_text:
                                                 kernel_line = extract_kernel_line(_lines[0][1], _lines[0][0],
                                                                                   iso_bin_dir)
-                                                if kernel_line is '':
+                                                if kernel_line == '':
                                                     continue
                                                 else:
                                                     break
@@ -306,7 +333,7 @@ def iso2grub2(iso_dir):
                                             for _lines in initrd_text:
                                                 initrd_line = extract_kernel_line(_lines[0][1], _lines[0][0],
                                                                                   iso_bin_dir)
-                                                if initrd_line is '':
+                                                if initrd_line == '':
                                                     continue
                                                 else:
                                                     break

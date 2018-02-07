@@ -7,10 +7,7 @@
 # Licence:  This file is a part of multibootusb package. You can redistribute it or modify
 # under the terms of GNU General Public License, v.2 or above
 
-import sys
 import os
-import string
-import platform
 import re
 from .gen import *
 from .isodump3 import ISO9660
@@ -56,15 +53,15 @@ def isolinux_bin_exist(iso_link):
     """
     if os.path.exists(iso_link):
         iso_file_list = _7zip.list_iso(iso_link)
-        if any("isolinux.bin" in s.lower() for s in iso_file_list):
-            return True
-        else:
-            return False
-
+        return bool(any("isolinux.bin" in s.lower() for s in iso_file_list))
 
 
 def iso_size(iso_link):
     return os.path.getsize(iso_link)
+
+
+def is_readable(iso_link):
+    return os.access(iso_link, os.R_OK)
 
 
 def is_bootable(iso_link):
@@ -72,12 +69,13 @@ def is_bootable(iso_link):
     Check if an ISO has the ability to boot.
     :return: True if ISO is bootable and False if not.
     """
-    iso9660fs = ISO9660(iso_link)
+    try:
+        iso9660fs = ISO9660(iso_link)
+    except IOError as e:
+        log(str(e))
+        raise
     isBootable = iso9660fs.checkISOBootable()
-    if isBootable:
-        return True
-    else:
-        return False
+    return bool(isBootable)
 
 
 def isolinux_bin_dir(iso_link):
@@ -162,14 +160,14 @@ def isolinux_version(isolinux_bin_path):
                         return str(number)
 
 
-def iso_extract_file(iso_link, dest_dir, filter):
+def iso_extract_file(iso_link, dest_dir, _filter):
     """
     Extract the specific file(s) from an ISO
     :param dest_dir: Path to destination directory.
     :param filter: Filter to extract particular file(s)
     :return: Extract file(s) to destination.
     """
-    _7zip.extract_iso(iso_link, dest_dir, filter)
+    _7zip.extract_iso(iso_link, dest_dir, _filter)
 
 
 def extract_cfg_file(iso_link):
@@ -178,7 +176,8 @@ def extract_cfg_file(iso_link):
     :param iso_link: Path to ISO file
     :return:
     """
-    _pattern = ['.cfg', '.CFG', '.txt', '.TXT', 'isolinux.bin', 'ISOLINUX.BIN', '.lst']
+    #_pattern = ['.cfg', '.CFG', '.txt', '.TXT', 'isolinux.bin', 'ISOLINUX.BIN', '.lst']
+    _pattern = ['.cfg', '.txt', 'isolinux.bin', '.lst']
     # file_list = iso_file_list(iso_link)
     for ext in _pattern:
         _7zip.extract_iso(iso_link, _iso_cfg_ext_dir, pattern='*' + ext)
@@ -230,4 +229,3 @@ if __name__ == '__main__':
     iso_extract_full(iso_path, 'test')
     iso_extract_file(iso_path, 'test', 'isolinux.bin')
     log(isolinux_version(test_iso_bin_path))
-

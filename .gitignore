@@ -95,6 +95,9 @@ ENV/
 # Source file
 multibootusb*.tar.gz
 
+# Temp files
+data/multibootusb/grub/menus.zip
+
 # Setup file
 
 multibootusb*.exe
@@ -106,3 +109,10 @@ multibootusb*.exe
 mbusb_te*py
 text.txt
 text.py
+*~
+
+# Created by eclipse/liclpise
+.project
+.pydevproject
+.settings*
+.directory

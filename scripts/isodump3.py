@@ -44,21 +44,21 @@ E_FAILURE = -1
 E_DEVICEFILE = -2  # can't write device file
 
 class PrimaryVolume(Structure):
-   def  __init__(self):
-       self.sysIdentifier = ""
-       self.volIdentifier = ""
-       self.volSize   = 0
-       self.volSeq    = 0
-       self.blockSize = 0
-       self.ptSize    = 0
-       self.ptLRd     = 0
-       self.fsVer     = 0
-       self.rootLoc   = 0
-       self.rootTotal = 0
+    def  __init__(self):
+        self.sysIdentifier = ""
+        self.volIdentifier = ""
+        self.volSize   = 0
+        self.volSeq    = 0
+        self.blockSize = 0
+        self.ptSize    = 0
+        self.ptLRd     = 0
+        self.fsVer     = 0
+        self.rootLoc   = 0
+        self.rootTotal = 0
 
 class Rrip(Structure):
     def __init__(self):
-        self.offset  =  -1
+        self.offset  = -1
         self.altname = ""
         self.devH    =  0
         self.devL    =  0
@@ -106,7 +106,10 @@ class ISO9660:
             f = open(isofile, 'rb')
         except(IOError):
             sys.stderr.write("can't open {0}".format(isofile))
-            sys.exit(-1)
+            raise
+
+        if os.path.getsize(isofile) == 0:
+            raise IOError("File {0} appears to be empty".format(isofile))
 
         self.isoFile = f
         self.priVol = None
@@ -152,15 +155,15 @@ class ISO9660:
         BLOCK_SIZE = priVol.blockSize
 
         # Check RRIP
-        #gen.log ("loc extent(%d)"%(dirRec.locExtent))
+        #gen.log("loc extent(%d)"%(dirRec.locExtent))
         self.priVol = priVol # readDirItems will use self.priVol
         root_dir = self.readDirItems(dirRec.locExtent, priVol.rootTotal)[0]
         rripNode = self.__rripLoop__(root_dir.suspBuf, root_dir.lenDr-root_dir.sysUseStar)
         if rripNode.offset != -1:
             self.rripOffset = rripNode.offset
-            #gen.log ("RRIP: rrip_offset %d"%(self.rripOffset))
+            #gen.log("RRIP: rrip_offset %d"%(self.rripOffset))
         else:
-            gen.log ("This ISO doesn't support RRIP")
+            gen.log("This ISO doesn't support RRIP")
         self.rootDir = root_dir
 
     #  Rrip extension
@@ -168,7 +171,7 @@ class ISO9660:
 
         if self.rripOffset > 0:
             entry_buf = desc_buf[self.rripOffset:]
-            gen.log ("__rripLoop__ offset:%d"%(self.rripOffset))
+            gen.log("__rripLoop__ offset:%d"%(self.rripOffset))
         else:
             entry_buf = desc_buf
 
@@ -181,7 +184,7 @@ class ISO9660:
             len_entry = 0
 
             while True:
-                #gen.log (("\n%d, %d\n")%(len_buf, head))
+                #gen.log(("\n%d, %d\n")%(len_buf, head))
                 head += len_entry
                 if len_buf - head < 4: # less than one entry
                     break
@@ -322,7 +325,7 @@ class ISO9660:
                 else:
                     return item
             else:
-                gen.log ("can't find " + dircomps[i_dircomp])
+                gen.log("can't find " + dircomps[i_dircomp])
                 return None
 
     def readDirrecord(self, desc_buf):
@@ -628,7 +631,7 @@ class ISO9660:
                             lastfile_end = BLOCK_SIZE * dr2.locExtent + dr2.lenData
                             self.isoFile.seek(0, os.SEEK_END)
                             iso_end = self.isoFile.tell()
-                            #gen.log ("%d-->%d")%(lastfile_end, iso_end)
+                            #gen.log("%d-->%d")%(lastfile_end, iso_end)
                             if iso_end >= lastfile_end:
                                 return True
                             else:
@@ -803,4 +806,3 @@ if __name__ == '__main__':
         else:
             gen.log("writeDir(%s)->(%s) with pattern(%s)"%(isodir, o_path, pattern))
             sys.exit(iso9660fs.writeDir(isodir, o_path, pattern, r, True))
-

@@ -15,6 +15,7 @@ import string
 import zipfile
 import tempfile
 import re
+import ctypes
 
 
 def scripts_dir_path():
@@ -39,16 +40,21 @@ def log(message, info=True, error=False, debug=False):
             os.remove(LOG_FILE_PATH)
     logging.basicConfig(filename=LOG_FILE_PATH,
                         filemode='a',
-                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        format='%(asctime)s.%(msecs)03d %(name)s %(levelname)s %(message)s',
                         datefmt='%H:%M:%S',
                         level=logging.DEBUG)
     print(message)
+
+    # remove ANSI color codes from logs
+    # message_clean = re.compile(r'\x1b[^m]*m').sub('', message)
+
     if info is True:
         logging.info(message)
     elif error is not False:
         logging.error(message)
     elif debug is not False:
         logging.debug(message)
+
 
 
 def resource_path(relativePath):
@@ -86,7 +92,7 @@ def print_version():
     Simple log the version number of the multibootusb application
     :return:
     """
-    log('multibootusb version: ', mbusb_version())
+    log('multibootusb version: ' + mbusb_version())
 
 
 def quote(text):
@@ -107,10 +113,7 @@ def is_quoted(text):
     :param text:    Any word or sentence with or without quote.
     :return:        True if text is quoted else False.
     """
-    if text.startswith("""") and text.endswith("""):
-        return True
-    else:
-        return False
+    return bool(text.startswith("\"") and text.endswith("\""))
 
 
 def has_digit(word):
@@ -134,10 +137,10 @@ def mbusb_log_file():
     """
     Function to genrate path to log file.
     Under linux path is created as /tmp/multibootusb.log
-    Under Windows the file is created under 
+    Under Windows the file is created under installation directory
     """
     if platform.system() == "Linux":
-        home_dir = os.path.expanduser('~')
+        # home_dir = os.path.expanduser('~')
         # log_file = os.path.join(home_dir, "multibootusb.log")
         log_file = os.path.join(tempfile.gettempdir(), "multibootusb.log")
     elif platform.system() == "Windows":
@@ -192,7 +195,7 @@ def copy_mbusb_dir_usb(usb_disk):
     :param usb_mount_path: Path to USB mount.
     :return:
     """
-    from .iso import iso_size
+#     from .iso import iso_size
     from .usb import details
 
     usb_details = details(usb_disk)
@@ -211,15 +214,62 @@ def copy_mbusb_dir_usb(usb_disk):
         log('multibootusb directory already exists. Not copying.')
 
     if not os.path.exists(os.path.join(usb_mount_path, 'EFI', 'BOOT', 'multibootusb_grub2.txt')):
+        if not os.path.exists(os.path.join(usb_mount_path, 'EFI', 'BOOT')):
+            log('EFI/BOOT directory does not exist. Creating new.')
+            os.makedirs(os.path.join(usb_mount_path, 'EFI', 'BOOT'), exist_ok=True)
+        if os.path.exists(os.path.join(usb_mount_path, 'EFI')):
+            shutil.rmtree(os.path.join(usb_mount_path, 'EFI'))
         try:
             log('Copying EFI directory to ' + usb_mount_path)
             shutil.copytree(resource_path(os.path.join("data", "EFI")), os.path.join(usb_mount_path, "EFI"))
             result = True
-        except:
-            log('multibootusb directory could not be copied to ' + usb_mount_path)
+        except Exception as e:
+            log(e)
             result = False
     else:
         log('EFI directory already exist. Not copying.')
+
+    '''
+    # For backward compatibility
+    if not os.path.exists(os.path.join(usb_mount_path, 'EFI', 'BOOT', 'bootx64-gpt.efi')):
+        shutil.copy(resource_path(os.path.join('data', 'EFI', 'BOOT', 'bootx64-gpt.efi')),
+                    os.path.join(usb_mount_path, 'EFI', 'BOOT', 'bootx64-gpt.efi'))
+
+    if not os.path.exists(os.path.join(usb_mount_path, 'EFI', 'BOOT', 'bootx64-msdos.efi')):
+        shutil.copy(resource_path(os.path.join('data', 'EFI', 'BOOT', 'bootx64-msdos.efi')),
+                    os.path.join(usb_mount_path, 'EFI', 'BOOT', 'bootx64-msdos.efi'))
+
+    if not os.path.exists(os.path.join(usb_mount_path, 'multibootusb', 'grub', 'core-gpt.img')):
+        shutil.copy(resource_path(os.path.join('data', 'multibootusb', 'grub', 'core-gpt.img')),
+                    os.path.join(usb_mount_path, 'multibootusb', 'grub', 'core-gpt.img'))
+
+    if not os.path.exists(os.path.join(usb_mount_path, 'multibootusb', 'grub', 'core-msdos.img')):
+        shutil.copy(resource_path(os.path.join('data', 'multibootusb', 'grub', 'core-msdos.img')),
+                    os.path.join(usb_mount_path, 'multibootusb', 'grub', 'core-msdos.img'))
+    
+    if not os.path.exists(os.path.join(usb_mount_path, 'multibootusb', 'grub', 'x86_64-efi')):
+        log("New EFI modules does not exist. Copying now.")
+        shutil.copytree(resource_path(os.path.join('data', 'multibootusb', 'grub', 'x86_64-efi')),
+                    os.path.join(usb_mount_path, 'multibootusb', 'grub', 'x86_64-efi'))
+        log("Replacing gpt efi binary with latest one.")
+        os.remove(os.path.join(usb_mount_path, 'EFI', 'BOOT', 'bootx64-gpt.efi'))
+        shutil.copy(resource_path(os.path.join('data', 'EFI', 'BOOT', 'bootx64-gpt.efi')),
+                    os.path.join(usb_mount_path, 'EFI', 'BOOT', 'bootx64-gpt.efi'))
+    '''
+    # Warn users about older version
+    if not os.path.exists(os.path.join(usb_mount_path, 'multibootusb', 'grub', 'x86_64-efi')):
+        log("You have created live usb using old version of multibootusb.")
+        log("Please remove EFI and multibootusb directory and reinstall distros again.")
+    # Ensue that we have iso directory. Implemented from version 9.0.1
+    if not os.path.exists(os.path.join(usb_mount_path, 'multibootusb', 'iso')):
+        os.makedirs(os.path.join(usb_mount_path, 'multibootusb', 'iso'))
+
+    # Update the menu files from resource path to USB directory.
+    try:
+        with zipfile.ZipFile(resource_path(os.path.join('data', 'multibootusb', 'grub', 'menus.zip')), "r") as z:
+            z.extractall(os.path.join(usb_mount_path, 'multibootusb', 'grub', 'menus'))
+    except:
+        log('Unable to extract menu files to USB disk.')
 
     return result
 
@@ -238,17 +288,17 @@ def read_input_yes():
         return False
 
 
-def strings(filename, min=4):
+def strings(filename, _min=4):
     with open(filename, errors="ignore") as f:
         result = ""
         for c in f.read():
             if c in string.printable:
                 result += c
                 continue
-            if len(result) >= min:
+            if len(result) >= _min:
                 yield result
             result = ""
-        if len(result) >= min:  # catch result at EOF
+        if len(result) >= _min:  # catch result at EOF
             yield result
 
 
@@ -258,10 +308,8 @@ def size_not_enough(iso_link, usb_disk):
     isoSize = iso_size(iso_link)
     usb_details = details(usb_disk)
     usb_size = usb_details['size_free']
-    if isoSize > usb_size:
-        return True
-    else:
-        return False
+
+    return bool(isoSize > usb_size)
 
 
 def mbusb_version():
@@ -331,12 +379,12 @@ def prepare_mbusb_host_dir():
         log("Removing junk files...")
         for files in os.listdir(os.path.join(home, "iso_cfg_ext_dir")):
             if os.path.isdir(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files))):
-                log (os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
+                log(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
                 os.chmod(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)), 0o777)
                 shutil.rmtree(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
             else:
                 try:
-                    log (os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
+                    log(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
                     os.chmod(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)), 0o777)
                     os.unlink(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
                     os.remove(os.path.join(os.path.join(home, "iso_cfg_ext_dir", files)))
@@ -389,10 +437,62 @@ def write_to_file(filepath, text):
     Simple function to write a text file
     :param filepath: Path to file
     :param text: Text to be written on to file
-    :return: 
+    :return:
     """
     with open(filepath, 'w') as f:
         f.write(text.strip())
+
+
+class MemoryCheck():
+    """
+    Cross platform way to checks memory of a given system. Works on Linux and Windows.
+    psutil is a good option to get memory info. But version 5.0 and only will work.
+    Source: https://doeidoei.wordpress.com/2009/03/22/python-tip-3-checking-available-ram-with-python/
+    Call this class like this: 
+    mem_info = memoryCheck()
+    print(mem_info.value)
+    """
+
+    def __init__(self):
+
+        if platform.system() == 'Linux':
+            self.value = self.linuxRam()
+        elif platform.system() == 'Windows':
+            self.value = self.windowsRam()
+        else:
+            log("MemoryCheck Class will only work on Linux and Windows.")
+
+    def windowsRam(self):
+        """
+        Uses Windows API to check RAM
+        """
+        kernel32 = ctypes.windll.kernel32
+        c_ulong = ctypes.c_ulong
+
+        class MEMORYSTATUS(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", c_ulong),
+                ("dwMemoryLoad", c_ulong),
+                ("dwTotalPhys", c_ulong),
+                ("dwAvailPhys", c_ulong),
+                ("dwTotalPageFile", c_ulong),
+                ("dwAvailPageFile", c_ulong),
+                ("dwTotalVirtual", c_ulong),
+                ("dwAvailVirtual", c_ulong)
+            ]
+
+        memoryStatus = MEMORYSTATUS()
+        memoryStatus.dwLength = ctypes.sizeof(MEMORYSTATUS)
+        kernel32.GlobalMemoryStatus(ctypes.byref(memoryStatus))
+
+        return int(memoryStatus.dwTotalPhys / 1024 ** 2)
+
+    def linuxRam(self):
+        """
+        Returns the RAM of a Linux system
+        """
+        totalMemory = os.popen("free -m").readlines()[1].split()[1]
+        return int(totalMemory)
 
 if __name__ == '__main__':
     log(quote("""Test-string"""))

@@ -8,10 +8,10 @@
 
 import os
 import shutil
-import sys
 import platform
 import threading
 import subprocess
+import time
 from .usb import *
 from .gen import *
 # from .iso import *
@@ -27,7 +27,7 @@ def install_distro():
     :return:
     """
     usb_mount = config.usb_mount
-    install_dir = os.path.join(usb_mount, "multibootusb", iso_basename(config.image_path))
+    install_dir = os.path.join(config.usb_mount, "multibootusb", iso_basename(config.image_path))
     _iso_file_list = iso.iso_file_list(config.image_path)
 
     if not os.path.exists(os.path.join(usb_mount, "multibootusb")):
@@ -46,17 +46,21 @@ def install_distro():
 
     if config.distro == "opensuse":
         iso.iso_extract_file(config.image_path, install_dir, 'boot')
-        status_text = "Copying ISO..."
+        config.status_text = "Copying ISO..."
         if platform.system() == "Windows":
             subprocess.call(["xcopy", config.image_path, usb_mount], shell=True)  # Have to use xcopy as python file copy is dead slow.
         elif platform.system() == "Linux":
             log("Copying " + config.image_path + " to " + usb_mount)
             shutil.copy(config.image_path, usb_mount)
-    elif config.distro == "Windows" or config.distro == "alpine" or config.distro == 'pc-unlocker':
+    elif config.distro == "Windows" or config.distro == 'pc-unlocker'\
+            or config.distro == 'pc-tool' or config.distro == 'grub2only':
         log("Extracting iso to " + usb_mount)
         iso_extract_full(config.image_path, usb_mount)
     elif config.distro == "trinity-rescue":
-        iso.iso_extract_file(config.image_path, usb_mount, '*trk3')
+        iso_extract_full(config.image_path, install_dir)
+        if os.path.exists(os.path.join(usb_mount, 'trk3')):
+            shutil.rmtree(os.path.join(usb_mount, 'trk3'))
+        shutil.move(os.path.join(install_dir, 'trk3'), os.path.join(usb_mount))
     elif config.distro == "ipfire":
         iso.iso_extract_file(config.image_path, usb_mount, '*.tlz')
         iso.iso_extract_file(config.image_path, usb_mount, 'distro.img')
@@ -78,6 +82,9 @@ def install_distro():
         #iso.iso_extract_full(config.image_path, usb_mount)
         config.status_text = "Copying ISO..."
         copy_iso(config.image_path, install_dir)
+    elif config.distro == "rising-av":
+        iso.iso_extract_file(config.image_path, install_dir, '*boot')
+        iso.iso_extract_file(config.image_path, usb_mount, '*rising')
     elif config.distro == 'sgrubd2':
         copy_iso(config.image_path, install_dir)
     elif config.distro == 'alt-linux':
@@ -91,14 +98,37 @@ def install_distro():
         iso_extract_full(config.image_path, usb_mount)
     elif config.distro == 'ReactOS':
         iso_extract_full(config.image_path, usb_mount)
-    elif config.distro == 'grub4dos_iso' or config.distro == 'raw_iso':
+    elif config.distro == 'grub4dos_iso' or config.distro == 'raw_iso' or config.distro == 'memdisk_iso' or \
+                    config.distro == 'memdisk_img':
         copy_iso(config.image_path, install_dir)
+    elif config.distro == 'Avira-RS':
+        iso_extract_full(config.image_path, install_dir)
+        # we want following directories on root of the USB drive. Ensure the previous directories are removed before moving.
+        if os.path.exists(os.path.join(usb_mount, 'antivir')):
+            shutil.rmtree(os.path.join(usb_mount, 'antivir'))
+            shutil.move(os.path.join(install_dir, 'antivir'), os.path.join(usb_mount))
+        if os.path.exists(os.path.join(usb_mount, 'avupdate')):
+            shutil.rmtree(os.path.join(usb_mount, 'avupdate'))
+            shutil.move(os.path.join(install_dir, 'avupdate'), os.path.join(usb_mount))
+        if os.path.exists(os.path.join(usb_mount, 'system')):
+            shutil.rmtree(os.path.join(usb_mount, 'system'))
+            shutil.move(os.path.join(install_dir, 'system'), os.path.join(usb_mount))
+    elif config.distro == 'alpine':
+        iso_extract_full(config.image_path, install_dir)
+        if os.path.exists(os.path.join(usb_mount, 'apks')):
+            shutil.rmtree(os.path.join(usb_mount, 'apks'))
+        shutil.move(os.path.join(install_dir, 'apks'), os.path.join(usb_mount))
+    elif config.distro == 'insert':
+        iso_extract_full(config.image_path, install_dir)
+        if os.path.exists(os.path.join(usb_mount, 'INSERT')):
+            shutil.rmtree(os.path.join(usb_mount, 'INSERT'))
+        shutil.move(os.path.join(install_dir, 'INSERT'), os.path.join(usb_mount))
     else:
         iso.iso_extract_full(config.image_path, install_dir)
 
     if platform.system() == 'Linux':
         log('ISO extracted successfully. Sync is in progress...')
-        os.system('sync')
+        os.sync()
 
     if config.persistence != 0:
         log('Creating persistence...')
@@ -121,6 +151,7 @@ def copy_iso(src, dst):
     elif platform.system() == "Linux":
         shutil.copy(src, dst)
 
+
 def install_progress():
     """
     Function to calculate progress percentage of install.
@@ -129,23 +160,23 @@ def install_progress():
     from . import progressbar
 
     usb_details = details(config.usb_disk)
-    usb_mount = usb_details['mount_point']
+    config.usb_mount = usb_details['mount_point']
     usb_size_used = usb_details['size_used']
     thrd = threading.Thread(target=install_distro, name="install_progress")
     # thrd.daemon()
     # install_size = usb_size_used / 1024
-    install_size = iso_size(config.image_path) / 1024
+#     install_size = iso_size(config.image_path) / 1024
     final_size = (usb_size_used + iso_size(config.image_path)) + config.persistence
     thrd.start()
     pbar = progressbar.ProgressBar(maxval=100).start()  # bar = progressbar.ProgressBar(redirect_stdout=True)
     while thrd.is_alive():
-        current_size = details(config.usb_disk)['size_used']
+        current_size = shutil.disk_usage(usb_details['mount_point'])[1]
         percentage = int((current_size / final_size) * 100)
-#         log("Install at " + str(percentage) + "%")
         if percentage > 100:
             percentage = 100
         config.percentage = percentage
         pbar.update(percentage)
+        time.sleep(0.1)
 
 
 def install_patch():
@@ -156,10 +187,10 @@ def install_patch():
     """
     if config.distro == 'debian':
         if platform.system() == 'Linux':  # Need to syn under Linux. Otherwise, USB disk becomes random read only.
-            os.system('sync')
+            os.sync()
         iso_cfg_ext_dir = os.path.join(multibootusb_host_dir(), "iso_cfg_ext_dir")
         isolinux_path = os.path.join(iso_cfg_ext_dir, isolinux_bin_path(config.image_path))
-        iso_linux_bin_dir = isolinux_bin_dir(config.image_path)
+#         iso_linux_bin_dir = isolinux_bin_dir(config.image_path)
         config.syslinux_version = isolinux_version(isolinux_path)
         iso_file_list = iso.iso_file_list(config.image_path)
         os.path.join(config.usb_mount, "multibootusb", iso_basename(config.image_path), isolinux_bin_dir(config.image_path))

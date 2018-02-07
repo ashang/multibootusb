@@ -11,6 +11,7 @@ usb_disk = ""
 usb_mount = ""
 usb_uuid = ""
 usb_label = ""
+usb_details = ''
 image_path = ""
 persistence = 0
 persistence_available = False
@@ -24,6 +25,10 @@ uninstall_distro_dir_path = ""
 iso_file_list = ''
 iso_bin_dir = ''
 process_exist = None
+yes = False
+cli_dd = False
+cli_syslinux = False
+usb_gpt = ''
 
 imager_iso_link = ""
 imager_usb_disk_selected = ""
@@ -33,7 +38,9 @@ imager_status_text = ""
 
 install_size = ""
 
-editors_linux = ["gedit", "kate", "kwrite"]
+editors_linux = ["xdg-open", "gedit", "kate", "kwrite"]
 editors_win = ["notepad++.exe", "notepad.exe"]
 
 imager_usb_disk = []
+
+debug = False

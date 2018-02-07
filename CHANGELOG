@@ -1,6 +1,109 @@
+Version - 9.1.0
+---------------
+* Included missing EFI modules
+* Fix for application crashing crashing on windows system 
+* New option to boot distros directly from ISOs. To availe this option, you need to copy ISO files in /multibootusb/iso
+
+Version - 9.0.0
+---------------
+* Improved UEFI support
+* New efi binary based on latest grub2 source
+* Added grub2 efi modules
+* Fix for crash when Windows language is non English
+* Fis for rpm based packaeges which crashes when running the programme
+* Improved the GPT detection under Windows
+* Corrected partedmagic path issues
+* Improved GPT detection under Linux
+* Check for root privilege when using CLI
+* Fix crash when installing ISO from CLI due to GPT check
+* Fix crash when installing syslinux from CLI due to GPT check
+* Install extlinux under Linux for NTFS filesystem
+* Correct usage instructions in help text
+* Added option to choose install distro using memdisk
+* Added Xenial Puppy
+* Added OSFclone
+* Added Redcore Linux
+* Added Slacko Puppy
+
+Version - 8.9.0
+---------------
+* Support for GPT based USB disks. BIOS mode works only under USB created under Linux. UEFI for on Windows and Linux
+* Added command line option to install sysinux on multibootusb director (use -s or --syslinux)
+* Added command line option to direct ISO writing to USB disk (use -r or --raw)
+* Boot ISO and IMG directly using memdisk
+* Added feature for selecting ISO, IMG, Zip and all files options in file chooser dialog
+* Corrected path to menu.lst file for distrs based on grub4dos
+* Fix for crash when multicard reader is inserted on the system without a SD card
+* Correctly detect USB disk information using udisk2-dbus without crash under Linux
+* Fixed an issue where using a path with spaces would cause a qemu boot error
+* If distro is not supported, ISO is automatically added using memdisk. You can uninstall later if it does not work
+* Added Nano Linux
+
+Version - 8.8.0
+---------------
+* Fix for crash when listing fixed partition
+* Simplified 7zip listing to include directories as well
+* Correctly remove files installed outside multibootusb directory when uninstalling
+* Added option to select zip files when choosing ISO files
+* Added option to choose between two methods when syslinux shipped by ISO is version 3 or below
+* Fix for trinity boot issue
+* Updated README file
+* Modified setup file for including grub2 modules in correct place
+* Add python path so as to avoid import error under debian
+* Fixed shipping of grub2 modules under correct directory (on Linux)
+* Display version info only before launching the application
+* Updated user guide
+* Added FAQ section on the official site
+* Reduced 7zip call when extracting files
+* Improved usage info string of command line option (Thanks to Keshav Kini)
+* Various code cleanup and removed redundancy codes
+* Added RISING Antivirus CD
+* Added INSERT ISO
+* Added Liberte
+* Added Alpine
+* Added Trinity Rescue Disk
+* Added AntiVirus Live CD (Calm AV)
+
+Version - 8.7.1
+---------------
+* Warning text under 'Write image to disk' tab
+* Fix for rpm based distro which did not run due to import error
+* Fix for suse package and it now checks for correct package dependencies
+* Copy only multibootusb directory to USB if user accept installation choice
+* Display human readable size for an ISO in terminal
+* New command line option to skip confirmation message 'try multibootusb -c -h' for more details
+* New command line option to install multiple distros at a time (Windows user should be able to run only under source code)
+* Fix for crash when installing under Install syslinux tab
+* Prevent read only filesystem under Linux
+* Corrected setup file copy location preventing crash
+* Improved multibootusb-pkexec script for working under rpm and deb based distros
+* Create correct policy file during build time for various packages
+* Improved user guide at http://multibootusb.org/page_guide/
+* Various code cleanups
+
+Version - 8.7.0
+---------------
+* Welcome "Alin Trăistaru (alindt)". He is one of the major contributor for the project
+* Hide GUI widgets when installation in progress
+* Show USB disk size in USB details
+* Reduced CPU usage drastically
+* Open default text editor application under Linux for editing syslinux file
+* Reduced various redundant function calls
+* Dropped p7zip-plugin for suse and mageia (package not available in repo)
+* Improved CLI user experience. Windows users should run from source to enable this option
+* Added custom functions for writing custom loopback.cfg file
+* Various code cleanup
+* Removed windows line ending which prevented application not to start under Linux
+* Corrected systemrescuecd subdir path
+* Full credit to  and added as
+* Added colour to terminal output
+* Bundled Colorama module
+* Added vba32rescue ISO
+* Added PC Tools ISO
+* Few other minor improvements to code
+
 Version - 8.6.0
 ---------------
-
 ==> A very big thanks to "Alin Trăistaru (alindt)". All credits goes to him for redesigning of GUI and code cleanups <==
 -------------------------------------------------------------------------------------------------------------
 
